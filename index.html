@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>flocus - Distraction-free timer</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Inter:wght@300;400;600;800&family=Lora:ital,wght@0,500;1,500&family=Playfair+Display:wght@600&family=Quicksand:wght@300;400&display=swap" rel="stylesheet">
+
+    <style>
+        /* Base Reset & Prevent Scrolling */
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; color: white; }
+        
+        /* Font Families */
+        .font-default { font-family: 'Inter', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+        .font-minimal { font-family: 'Inter', sans-serif; font-weight: 300; }
+        .font-serif { font-family: 'Lora', serif; font-weight: 500; }
+        .font-handwritten { font-family: 'Caveat', cursive; font-weight: 600; font-size: 1.1em; }
+        .font-minimal-light { font-family: 'Quicksand', sans-serif; font-weight: 300; }
+        .font-serif-condensed { font-family: 'Playfair Display', serif; font-weight: 600; }
+        
+        /* Flocus Gradient Mesh */
+        .bg-mesh {
+            background-color: #2b1055;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(103, 33, 235, 0.9) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(246, 85, 116, 0.9) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(255, 175, 123, 0.9) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(85, 230, 193, 0.5) 0px, transparent 50%);
+            background-size: 200% 200%;
+            animation: mesh-movement 20s ease infinite;
+        }
+
+        @keyframes mesh-movement {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* YouTube Background Setup */
+        .yt-container {
+            position: absolute; top: 50%; left: 50%; width: 100vw; height: 100vh;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: -2;
+        }
+        @media (min-aspect-ratio: 16/9) { .yt-container iframe { height: 300%; top: -100%; position: absolute; width: 100%; left: 0; } }
+        @media (max-aspect-ratio: 16/9) { .yt-container iframe { width: 300%; left: -100%; position: absolute; height: 100%; top: 0; } }
+
+        /* UI Overlays & Glassmorphism */
+        #bg-layer { position: absolute; inset: 0; z-index: -2; transition: filter 0.3s; background-size: cover; background-position: center; }
+        #overlay-layer { position: absolute; inset: 0; z-index: -1; background: black; transition: opacity 0.3s; }
+        
+        .tab-btn { transition: all 0.2s ease; border: 1px solid transparent; }
+        .tab-btn.active { background-color: #6B4EFF; color: white; }
+        .tab-btn.inactive { border-color: rgba(255,255,255,0.3); color: rgba(255,255,255,0.7); }
+        .tab-btn.inactive:hover { background-color: rgba(255,255,255,0.1); color: white; }
+
+        /* Custom Scrollbar for Settings */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
+        /* Range Sliders */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #6B4EFF; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+        /* Animations */
+        .slide-in { transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .slide-in.open { transform: translateX(0); }
+        .fade-in { opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .fade-in.open { opacity: 1; pointer-events: auto; }
+    </style>
+</head>
+<body class="font-default antialiased select-none">
+
+    <!-- 1. Background Layers -->
+    <div id="bg-layer" class="bg-mesh"></div>
+    <div id="yt-layer" class="yt-container hidden"></div>
+    <div id="overlay-layer" style="opacity: 0.1;"></div>
+
+    <!-- 2. Main App UI -->
+    <div class="relative z-10 flex flex-col h-full w-full p-8 transition-opacity duration-300" id="main-ui">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-start w-full">
+            <div class="flex flex-col">
+                <div class="text-3xl font-bold tracking-tight">flocus</div>
+                <div class="text-[10px] tracking-widest opacity-60 mt-1 uppercase font-semibold">by GRIDFITI clone</div>
+            </div>
+            <div class="hidden md:block max-w-xs text-right opacity-90 text-lg font-serif">
+                "Every day is another chance to change your story"
+            </div>
+        </header>
+
+        <!-- Center Timer Area -->
+        <main class="flex-1 flex flex-col items-center justify-center -mt-12">
+            <h2 class="text-2xl md:text-3xl font-medium mb-6 drop-shadow-md tracking-wide" style="font-family: 'Inter', sans-serif;">
+                What do you want to focus on?
+            </h2>
+
+            <!-- Mode Tabs -->
+            <div class="flex space-x-3 mb-4" style="font-family: 'Inter', sans-serif;">
+                <button onclick="setMode('focus')" id="tab-focus" class="tab-btn active px-6 py-2 rounded-full text-sm font-medium backdrop-blur-sm">Focus</button>
+                <button onclick="setMode('shortBreak')" id="tab-shortBreak" class="tab-btn inactive px-6 py-2 rounded-full text-sm font-medium backdrop-blur-sm">Short Break</button>
+                <button onclick="setMode('longBreak')" id="tab-longBreak" class="tab-btn inactive px-6 py-2 rounded-full text-sm font-medium backdrop-blur-sm">Long Break</button>
+            </div>
+            
+            <!-- Session Dots -->
+            <div class="flex space-x-1.5 mb-8 opacity-60">
+                <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-white/40"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-white/40"></div>
+                <div class="w-1.5 h-1.5 rounded-full bg-white/40"></div>
+            </div>
+
+            <!-- The Clock -->
+            <div id="timer-display" class="text-[120px] md:text-[200px] leading-none mb-8 drop-shadow-2xl tabular-nums tracking-tighter" style="text-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                25:00
+            </div>
+
+            <!-- Controls -->
+            <div class="flex items-center space-x-4" style="font-family: 'Inter', sans-serif;">
+                <button id="start-btn" onclick="toggleTimer()" class="bg-[#6B4EFF] hover:bg-[#5839f5] transition-colors px-10 py-3.5 rounded-full font-bold text-lg shadow-lg flex items-center space-x-2">
+                    <span id="start-text">Start</span>
+                </button>
+                <button onclick="resetTimer()" class="p-3.5 rounded-full hover:bg-white/10 transition-colors text-white" title="Reset Timer">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+            </div>
+        </main>
+
+        <!-- Bottom Toolbar (Right) - Cleaned up to only include working features -->
+        <div class="absolute bottom-8 right-8 flex space-x-2 bg-black/20 backdrop-blur-md border border-white/10 rounded-full px-2 py-2">
+            <!-- Settings Trigger -->
+            <button onclick="toggleSettings()" class="p-2 hover:bg-white/10 rounded-full transition text-white">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            
+            <!-- Fullscreen Toggle -->
+            <button onclick="document.documentElement.requestFullscreen()" class="p-2 hover:bg-white/10 rounded-full transition text-white">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. Settings Sidebar -->
+    <div id="settings-backdrop" class="fixed inset-0 bg-black/40 fade-in z-40" onclick="toggleSettings()"></div>
+    <div id="settings-panel" class="fixed top-0 right-0 h-full w-full max-w-4xl bg-[#141414] border-l border-white/10 shadow-2xl z-50 flex slide-in text-white" style="font-family: 'Inter', sans-serif;">
+        
+        <!-- Left Nav Sidebar -->
+        <div class="w-64 border-r border-white/10 flex flex-col bg-[#0F0F0F]">
+            <div class="p-4 flex justify-between items-center border-b border-white/10">
+                <button onclick="toggleSettings()" class="p-2 hover:bg-white/10 rounded-full transition">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <nav class="flex-1 overflow-y-auto p-4 space-y-1 text-sm font-medium">
+                <div class="px-3 py-2 text-white/50 text-xs font-bold uppercase tracking-wider mb-2">Appearance</div>
+                <button id="nav-theme" onclick="switchSettingTab('theme')" class="nav-btn w-full text-left px-3 py-2 rounded-lg bg-[#6B4EFF]/10 text-[#a78bfa] flex items-center mb-1">
+                    <span class="w-6">💡</span> Background
+                </button>
+                <button id="nav-clock" onclick="switchSettingTab('clock')" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-white/80 flex items-center mb-1">
+                    <span class="w-6 opacity-60 transition-opacity">⏱️</span> Typography
+                </button>
+                
+                <div class="px-3 py-2 text-white/50 text-xs font-bold uppercase tracking-wider mt-6 mb-2">Timer</div>
+                <button id="nav-timer" onclick="switchSettingTab('timer')" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-white/80 flex items-center mb-1">
+                    <span class="w-6 opacity-60 transition-opacity">⏳</span> Timer Settings
+                </button>
+            </nav>
+        </div>
+
+        <!-- Right Content Area -->
+        <div class="flex-1 overflow-y-auto bg-[#141414] p-8 pb-20">
+            
+            <!-- BACKGROUND / THEME SECTION -->
+            <div id="section-theme" class="settings-section block">
+                <h2 class="text-2xl font-bold mb-2">Background</h2>
+                <p class="text-white/60 text-sm mb-8">Customize your visuals while in Focus mode.</p>
+
+                <!-- Custom Background Box -->
+                <div class="bg-[#1C1C1C] rounded-2xl border border-white/5 p-6 mb-8">
+                    <h3 class="text-lg font-semibold mb-4">Custom Media</h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <label class="block text-xs font-bold text-white/50 uppercase tracking-wider mb-2">Image URL</label>
+                            <input type="text" id="inp-bg-url" placeholder="https://images.unsplash.com/..." class="w-full bg-[#0F0F0F] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#6B4EFF] mb-4" onchange="updateCustomBackground('image')">
+                            
+                            <label class="block text-xs font-bold text-white/50 uppercase tracking-wider mb-2">YouTube Video ID/URL</label>
+                            <input type="text" id="inp-yt-url" placeholder="e.g. jfKfPfyJRdk" class="w-full bg-[#0F0F0F] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-[#6B4EFF]" onchange="updateCustomBackground('youtube')">
+                        </div>
+                        
+                        <div class="space-y-6">
+                            <!-- Overlay Slider -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <label class="text-sm font-medium">Darkness Overlay</label>
+                                    <span id="overlay-val" class="text-xs bg-[#2A2A2A] px-2 py-1 rounded text-white/70">10%</span>
+                                </div>
+                                <input type="range" id="inp-overlay" min="0" max="100" value="10" oninput="updateSliders()">
+                            </div>
+                            <!-- Blur Slider -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <label class="text-sm font-medium">Background Blur</label>
+                                    <span id="blur-val" class="text-xs bg-[#2A2A2A] px-2 py-1 rounded text-white/70">0px</span>
+                                </div>
+                                <input type="range" id="inp-blur" min="0" max="50" value="0" oninput="updateSliders()">
+                            </div>
+                            
+                            <button onclick="resetBackgroundToDefault()" class="text-sm text-red-400 hover:text-red-300 font-medium pt-2">Reset to Default Flocus Mesh</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CLOCK / FONTS SECTION -->
+            <div id="section-clock" class="settings-section hidden">
+                <h2 class="text-2xl font-bold mb-2">Clock & Typography</h2>
+                <p class="text-white/60 text-sm mb-8">Customize how your time is displayed.</p>
+
+                <div class="bg-[#1C1C1C] rounded-2xl border border-white/5 p-6">
+                    <h3 class="text-lg font-semibold mb-4">Clock Style</h3>
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div onclick="setFont('font-default')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-default">
+                                <span class="font-default text-3xl font-bold">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Default</div>
+                        </div>
+
+                        <div onclick="setFont('font-minimal')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-minimal">
+                                <span class="font-minimal text-3xl">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Minimal</div>
+                        </div>
+
+                        <div onclick="setFont('font-serif')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-serif">
+                                <span class="font-serif text-3xl">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Serif</div>
+                        </div>
+
+                        <div onclick="setFont('font-handwritten')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-handwritten">
+                                <span class="font-handwritten text-4xl">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Handwritten</div>
+                        </div>
+
+                        <div onclick="setFont('font-minimal-light')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-minimal-light">
+                                <span class="font-minimal-light text-3xl">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Minimal Light</div>
+                        </div>
+
+                        <div onclick="setFont('font-serif-condensed')" class="cursor-pointer group">
+                            <div class="aspect-[4/3] rounded-xl bg-gradient-to-br from-[#1a4a5e] to-[#0d2a36] border-2 border-transparent group-hover:border-white/30 flex items-center justify-center relative overflow-hidden mb-2 transition" id="card-font-serif-condensed">
+                                <span class="font-serif-condensed text-3xl">9:24</span>
+                            </div>
+                            <div class="text-center text-sm font-medium">Serif Condensed</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TIMER SETTINGS SECTION -->
+            <div id="section-timer" class="settings-section hidden">
+                <h2 class="text-2xl font-bold mb-2">Timer Settings</h2>
+                <p class="text-white/60 text-sm mb-8">Set your intervals for work and breaks.</p>
+
+                <div class="bg-[#1C1C1C] rounded-2xl border border-white/5 p-6 flex space-x-6">
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-white/50 uppercase tracking-wider mb-3">Focus</label>
+                        <input type="number" id="inp-time-focus" value="25" min="1" max="120" onchange="updateDurations()" class="w-full bg-[#0F0F0F] border border-white/10 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-[#6B4EFF]">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-white/50 uppercase tracking-wider mb-3">Short Break</label>
+                        <input type="number" id="inp-time-short" value="5" min="1" max="60" onchange="updateDurations()" class="w-full bg-[#0F0F0F] border border-white/10 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-[#6B4EFF]">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-white/50 uppercase tracking-wider mb-3">Long Break</label>
+                        <input type="number" id="inp-time-long" value="15" min="1" max="60" onchange="updateDurations()" class="w-full bg-[#0F0F0F] border border-white/10 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-[#6B4EFF]">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- 1. STATE MANAGEMENT ---
+        let state = {
+            mode: 'focus', // focus, shortBreak, longBreak
+            isRunning: false,
+            timeLeft: 25 * 60,
+            targetTime: 0,
+            settings: {
+                durations: { focus: 25, shortBreak: 5, longBreak: 15 },
+                font: 'font-default',
+                bgType: 'mesh', // mesh, image, youtube
+                bgValue: '',
+                overlay: 10,
+                blur: 0
+            }
+        };
+
+        // --- 2. INITIALIZATION & STORAGE ---
+        function init() {
+            const saved = localStorage.getItem('flocusSettings');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    state.settings = { ...state.settings, ...parsed };
+                } catch(e) { console.error(e); }
+            }
+            
+            // Apply Settings to DOM
+            applySettingsToDOM();
+            setMode('focus'); // Reset to focus on load
+            
+            // Start Timer Loop
+            requestAnimationFrame(timerLoop);
+        }
+
+        function saveSettings() {
+            localStorage.setItem('flocusSettings', JSON.stringify(state.settings));
+        }
+
+        // --- 3. TIMER ENGINE (Ultra-Accurate via Date.now) ---
+        function timerLoop() {
+            if (state.isRunning) {
+                const now = Date.now();
+                const remaining = Math.max(0, Math.ceil((state.targetTime - now) / 1000));
+                
+                if (remaining !== state.timeLeft) {
+                    state.timeLeft = remaining;
+                    updateClockDisplay();
+                }
+
+                if (remaining <= 0) {
+                    state.isRunning = false;
+                    handleSessionEnd();
+                }
+            }
+            requestAnimationFrame(timerLoop);
+        }
+
+        function toggleTimer() {
+            const btnText = document.getElementById('start-text');
+            if (!state.isRunning) {
+                // Start
+                state.targetTime = Date.now() + (state.timeLeft * 1000);
+                state.isRunning = true;
+                btnText.textContent = "Pause";
+            } else {
+                // Pause
+                state.isRunning = false;
+                btnText.textContent = "Start";
+            }
+        }
+
+        function resetTimer() {
+            state.isRunning = false;
+            document.getElementById('start-text').textContent = "Start";
+            setMode(state.mode); // Reset time to current mode's max
+        }
+
+        function setMode(newMode) {
+            state.mode = newMode;
+            state.isRunning = false;
+            document.getElementById('start-text').textContent = "Start";
+            
+            // Update time
+            const mins = state.settings.durations[newMode];
+            state.timeLeft = mins * 60;
+            updateClockDisplay();
+
+            // Update UI Tabs
+            ['focus', 'shortBreak', 'longBreak'].forEach(m => {
+                const el = document.getElementById(`tab-${m}`);
+                if (m === newMode) {
+                    el.classList.remove('inactive'); el.classList.add('active');
+                } else {
+                    el.classList.remove('active'); el.classList.add('inactive');
+                }
+            });
+        }
+
+        function handleSessionEnd() {
+            document.getElementById('start-text').textContent = "Start";
+            if (state.mode === 'focus') {
+                playChime('workEnd');
+                setMode('shortBreak'); // Auto switch, but doesn't start
+            } else {
+                playChime('breakEnd');
+                setMode('focus');
+            }
+        }
+
+        function updateClockDisplay() {
+            const m = Math.floor(state.timeLeft / 60).toString().padStart(2, '0');
+            const s = (state.timeLeft % 60).toString().padStart(2, '0');
+            document.getElementById('timer-display').textContent = `${m}:${s}`;
+            document.title = `${m}:${s} - flocus`;
+        }
+
+        // --- 4. AUDIO GENERATOR (No external files) ---
+        function playChime(type) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+
+            const playTone = (freq, startTime, duration, vol) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, startTime);
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(vol, startTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                osc.start(startTime); osc.stop(startTime + duration);
+            };
+
+            const now = ctx.currentTime;
+            if (type === 'workEnd') {
+                playTone(523.25, now, 1.5, 0.4); // C5
+                playTone(659.25, now + 0.2, 1.5, 0.4); // E5
+            } else {
+                playTone(440.00, now, 2.0, 0.3); // A4 (Calm)
+            }
+        }
+
+        // --- 5. SETTINGS & UI LOGIC ---
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            const backdrop = document.getElementById('settings-backdrop');
+            panel.classList.toggle('open');
+            backdrop.classList.toggle('open');
+        }
+
+        function switchSettingTab(tabName) {
+            // Hide all content sections
+            document.querySelectorAll('.settings-section').forEach(el => {
+                el.classList.add('hidden');
+                el.classList.remove('block');
+            });
+            
+            // Show target content section
+            const targetSection = document.getElementById(`section-${tabName}`);
+            if (targetSection) {
+                targetSection.classList.remove('hidden');
+                targetSection.classList.add('block');
+            }
+
+            // Reset all Nav Buttons to inactive styling
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.className = 'nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-white/80 flex items-center mb-1';
+                btn.querySelector('span').classList.add('opacity-60');
+            });
+
+            // Highlight the active Nav Button
+            const activeBtn = document.getElementById(`nav-${tabName}`);
+            if (activeBtn) {
+                activeBtn.className = 'nav-btn w-full text-left px-3 py-2 rounded-lg bg-[#6B4EFF]/10 text-[#a78bfa] flex items-center mb-1';
+                activeBtn.querySelector('span').classList.remove('opacity-60');
+            }
+        }
+
+        function applySettingsToDOM() {
+            // Apply Font
+            document.body.className = `antialiased select-none ${state.settings.font}`;
+            document.querySelectorAll('[id^="card-font-"]').forEach(el => el.style.borderColor = 'transparent');
+            const activeFontCard = document.getElementById(`card-${state.settings.font}`);
+            if(activeFontCard) activeFontCard.style.borderColor = '#6B4EFF';
+
+            // Apply Background
+            const bgLayer = document.getElementById('bg-layer');
+            const ytLayer = document.getElementById('yt-layer');
+            
+            if (state.settings.bgType === 'mesh') {
+                bgLayer.className = 'bg-mesh';
+                bgLayer.style.backgroundImage = '';
+                ytLayer.classList.add('hidden');
+                ytLayer.innerHTML = '';
+            } else if (state.settings.bgType === 'image') {
+                bgLayer.className = '';
+                bgLayer.style.backgroundImage = `url('${state.settings.bgValue}')`;
+                ytLayer.classList.add('hidden');
+                ytLayer.innerHTML = '';
+            } else if (state.settings.bgType === 'youtube') {
+                bgLayer.className = 'bg-black';
+                bgLayer.style.backgroundImage = '';
+                ytLayer.classList.remove('hidden');
+                
+                // Extract video ID
+                const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+                const match = state.settings.bgValue.match(regExp);
+                const vidId = (match && match[2].length === 11) ? match[2] : state.settings.bgValue;
+                
+                if (vidId && !ytLayer.innerHTML.includes(vidId)) {
+                    ytLayer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vidId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=${vidId}" frameborder="0" allow="autoplay; encrypted-media"></iframe>`;
+                }
+            }
+
+            // Apply Sliders (Blur & Overlay)
+            document.getElementById('overlay-layer').style.opacity = state.settings.overlay / 100;
+            bgLayer.style.filter = `blur(${state.settings.blur}px)`;
+            ytLayer.style.filter = `blur(${state.settings.blur}px)`;
+            
+            // Sync Input fields
+            document.getElementById('inp-overlay').value = state.settings.overlay;
+            document.getElementById('overlay-val').textContent = `${state.settings.overlay}%`;
+            document.getElementById('inp-blur').value = state.settings.blur;
+            document.getElementById('blur-val').textContent = `${state.settings.blur}px`;
+            
+            document.getElementById('inp-time-focus').value = state.settings.durations.focus;
+            document.getElementById('inp-time-short').value = state.settings.durations.shortBreak;
+            document.getElementById('inp-time-long').value = state.settings.durations.longBreak;
+            
+            if(state.settings.bgType === 'image') document.getElementById('inp-bg-url').value = state.settings.bgValue;
+            if(state.settings.bgType === 'youtube') document.getElementById('inp-yt-url').value = state.settings.bgValue;
+        }
+
+        // Event Handlers for Setting Changes
+        function setFont(fontClass) {
+            state.settings.font = fontClass;
+            saveSettings();
+            applySettingsToDOM();
+        }
+
+        function updateSliders() {
+            state.settings.overlay = document.getElementById('inp-overlay').value;
+            state.settings.blur = document.getElementById('inp-blur').value;
+            saveSettings();
+            applySettingsToDOM();
+        }
+
+        function updateCustomBackground(type) {
+            state.settings.bgType = type;
+            state.settings.bgValue = type === 'image' ? document.getElementById('inp-bg-url').value : document.getElementById('inp-yt-url').value;
+            saveSettings();
+            applySettingsToDOM();
+        }
+
+        function resetBackgroundToDefault() {
+            state.settings.bgType = 'mesh';
+            state.settings.bgValue = '';
+            document.getElementById('inp-bg-url').value = '';
+            document.getElementById('inp-yt-url').value = '';
+            saveSettings();
+            applySettingsToDOM();
+        }
+
+        function updateDurations() {
+            state.settings.durations.focus = parseInt(document.getElementById('inp-time-focus').value) || 25;
+            state.settings.durations.shortBreak = parseInt(document.getElementById('inp-time-short').value) || 5;
+            state.settings.durations.longBreak = parseInt(document.getElementById('inp-time-long').value) || 15;
+            saveSettings();
+            if(!state.isRunning) setMode(state.mode); // Refresh current timer
+        }
+
+        // Boot
+        window.onload = init;
+
+    </script>
+</body>
+</html>
